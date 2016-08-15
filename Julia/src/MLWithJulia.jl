@@ -23,11 +23,11 @@ function  setupVectorBinary(x,y)
     #Select Features
     x = x[1:6:96,idy]
     y = y[idy]
-
+    y = y.> 0
     #Normalize X-Vector
     x = x ./ sum(x,1);
    
-    return (x,y)
+    return (Array{Float32,2}(x),Array{Float32,1}(y))
 end
 
 
@@ -35,34 +35,15 @@ function  normalizeVector(x_vectors)
 
 end
 function MLLearn()
-    
-    y_train = Array{Float32,1}(vcat(load("16-07-02.jld","y"),load("16-07-03.jld","y"),load("16-07-04.jld","y"),load("16-07-05.jld","y"),load("16-07-06.jld","y"),load("16-07-07.jld","y")));
-    y_train = map(yi -> Float32(yi>0),y_train);
-    trainingSetPos = vcat(find(y-> y>0,y_train))
-    trainingSetNeg = rand(vcat(find(y-> y==0,y_train)),length(trainingSetPos))
-    println(length(trainingSetPos))
-    trainingSetInd = vcat(trainingSetPos,trainingSetNeg)
-    #trainingSetInd = setupTrainingML(y_train)
-    shuffle!(trainingSetInd)
-    x_train = Array{Float32,2}(full(hcat(load("16-07-02.jld","x"),load("16-07-03.jld","x"),load("16-07-04.jld","x"),load("16-07-05.jld","x"),load("16-07-06.jld","x"),load("16-07-07.jld","x"))[:,trainingSetInd]));
-    
-    #normalize each feature across vector.
+    vcatTuple = (i,j) -> (hcat(i[1],j[1]),vcat(i[2],j[2]))
+    trainingFileSet = map(i -> "16-07-0" * string(i) * ".jld" , collect(2:8))
+    (x_train, y_train) = reduce(vcatTuple, map(i -> setupVectorBinary(load(i,"x"),load(i,"y"))   
+                                                 ,trainingFileSet))
+    testingFile = "16-07-09.jld"
+    (x_test,y_test) = setupVectorBinary(load(testingFile,"x"),load(testingFile,"y"))
 
-    x_train = x_train[1:6:96,:] ./ sum(x_train[1:6:96,:],1);
-    #y_train = Array{Float32,1}(y_train[trainingSetInd]);
-    y_train = Array{Float32,1}(map(y->y>0,y_train[trainingSetInd]));
-    x_test = Array{Float32,2}(full(load("16-07-09.jld","x")));
-    #x_test = x_test[1:6:96,:] ./ sum(x_test[1:6:96,:],1);
-
-
-    x_test = x_test[1:6:96,:] ./ sum(x_test[1:6:96,:],1);
-    y_test = Array{Float32,1}(load("16-07-09.jld","y"));
-    y_test = map(yi -> Float32(yi>0),y_test);
-
-    testingSetPos = vcat(find(y-> y>0,y_test))[1:1000]
-    testingSetNeg = vcat(find(y-> y==0,y_test))[1:10000]
-    #x_train = hcat(x_train,x_test[:,testingSetPos])
-    #y_train = vcat(y_train,y_test[testingSetPos])
+    testingSetPos = vcat(find(y-> y>0,y_test))
+    testingSetNeg = vcat(find(y-> y==0,y_test))
     
     
     data  =  MemoryDataLayer(name="train-data",tops=[:data,:label],data=Array[x_train,y_train],batch_size=1000)
@@ -108,7 +89,7 @@ function MLLearn()
     # show performance on test data every 1000 iterations
     #data_test = HDF5DataLayer(name="test-data",source="test-data-list.txt",batch_size=100)
     
-    data_test =  MemoryDataLayer(name="train-data",data=Array[x_train[:,[1:10000]], y_train[1:10000]],batch_size=50)
+    data_test =  MemoryDataLayer(name="train-data",data=Array[x_train[:,1:10000], y_train[1:10000]],batch_size=50)
     accuracy = ConfusionMatrixLayer(name="train-accuracy",bottoms=[:final, :label])
     netplot = BinaryNetPlotLayer(name="train-net",bottoms=[:final, :label])
     test_net = Net("TweetDetect-test", backend, [data_test, common_layers..., accuracy,netplot])
