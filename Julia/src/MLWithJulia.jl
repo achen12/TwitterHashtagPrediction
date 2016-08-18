@@ -89,10 +89,11 @@ function MLLearn()
     # show performance on test data every 1000 iterations
     #data_test = HDF5DataLayer(name="test-data",source="test-data-list.txt",batch_size=100)
     
-    data_test =  MemoryDataLayer(name="train-data",data=Array[x_train[:,1:10000], y_train[1:10000]],batch_size=50)
+    data_test =  MemoryDataLayer(name="train-data",data=Array[x_train[:,1:20000], y_train[1:20000]],batch_size=50)
     accuracy = ConfusionMatrixLayer(name="train-accuracy",bottoms=[:final, :label])
     netplot = BinaryNetPlotLayer(name="train-net",bottoms=[:final, :label])
-    test_net = Net("TweetDetect-test", backend, [data_test, common_layers..., accuracy,netplot])
+    rocplot = ROCPlotLayer(name="train-net",bottoms=[:final, :label])
+    test_net = Net("TweetDetect-test", backend, [data_test, common_layers..., accuracy,netplot,rocplot])
     add_coffee_break(solver, ValidationPerformance(test_net), every_n_iter=500)
     
     
