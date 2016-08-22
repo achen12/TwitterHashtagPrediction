@@ -13,23 +13,29 @@ function  setupVectorMultiClass(x,y)
 end
 
 
-function  setupVectorBinary(x,y)
+function  setupTrainingVectorBinary(x,y)
     #Find balance Sets of labels
     idySetPos = vcat(find(i-> i> 0,y))
     idySetNeg = rand(vcat(find(i-> i==0,y)),length(idySetPos))
     idy = vcat(idySetPos, idySetNeg) 
     shuffle!(idy)
-     
     #Select Features
     x = x[1:6:96,idy]
     y = y[idy]
     y = y.> 0
     #Normalize X-Vector
     x = x ./ sum(x,1);
-   
     return (Array{Float32,2}(x),Array{Float32,1}(y))
 end
 
+function  setupVectorBinary(x,y)
+    #Select Features
+    x = x[1:6:96,:]
+    y = y.> 0
+    #Normalize X-Vector
+    x = x ./ sum(x,1);
+    return (Array{Float32,2}(x),Array{Float32,1}(y))
+end
 
 function  normalizeVector(x_vectors)
 
@@ -37,13 +43,13 @@ end
 function MLLearn()
     vcatTuple = (i,j) -> (hcat(i[1],j[1]),vcat(i[2],j[2]))
     trainingFileSet = map(i -> "16-07-0" * string(i) * ".jld" , collect(2:8))
-    (x_train, y_train) = reduce(vcatTuple, map(i -> setupVectorBinary(load(i,"x"),load(i,"y"))   
+    (x_train, y_train) = reduce(vcatTuple, map(i -> setupTrainingVectorBinary(load(i,"x"),load(i,"y"))   
                                                  ,trainingFileSet))
-    testingFile = "16-07-09.jld"
+    testingFile = "16-07-01.jld"
     (x_test,y_test) = setupVectorBinary(load(testingFile,"x"),load(testingFile,"y"))
 
     testingSetPos = vcat(find(y-> y>0,y_test))
-    testingSetNeg = vcat(find(y-> y==0,y_test))
+    testingSetNeg = vcat(find(y-> y==0,y_test))[1:10000]
     
     
     data  =  MemoryDataLayer(name="train-data",tops=[:data,:label],data=Array[x_train,y_train],batch_size=1000)
@@ -74,7 +80,7 @@ function MLLearn()
     solver_method = SGD()
     params = make_solver_parameters(solver_method, max_iter=3000, regu_coef=0.0005,
         mom_policy=MomPolicy.Fixed(0.90),
-   ;# lr_policy=LRPolicy.Fixed(0.1))
+   # lr_policy=LRPolicy.Fixed(0.1))
         lr_policy=LRPolicy.Inv(0.01, 0.001,0.75))
     solver = Solver(solver_method, params)
     
@@ -96,31 +102,91 @@ function MLLearn()
     test_net = Net("TweetDetect-test", backend, [data_test, common_layers..., accuracy,netplot,rocplot])
     add_coffee_break(solver, ValidationPerformance(test_net), every_n_iter=500)
     
-    
-    #data_test =  MemoryDataLayer(name="test-data",data=Array[x_test[20000:40000], y_test[20000:40000]],batch_size=50)
-    #accuracy = AccuracyLayer(name="test-accuracy",bottoms=[:ip2, :label])
-    #test_net = Net("TweetDetect-test", backend, [data_test, common_layers..., accuracy])
-    #add_coffee_break(solver, ValidationPerformance(test_net), every_n_iter=100)
+
+    data_test =  MemoryDataLayer(name="test-data",data=Array[x_test, y_test],batch_size=100)
+    accuracy = AccuracyLayer(name="test-accuracy",bottoms=[:ip2, :label])
+    outputLayer = MemoryOutputLayer(name="test-Output",bottoms=[:final])
+    test_net = Net("TweetDetect-test", backend, [data_test, common_layers..., accuracy,outputLayer])
+    add_coffee_break(solver, ValidationPerformance(test_net), every_n_iter=3000)
     
     data_test =  MemoryDataLayer(name="testPos-data",data=Array[ x_test[:,testingSetPos], y_test[testingSetPos]],batch_size=50)
 #    confMatrix = ConfusionMatrixLayer(name="testPos-accuracy",bottoms=[:final, :label])
     accuracy = AccuracyLayer(name="testPos-accuracy",bottoms=[:final, :label])
 #    netplot = BinaryNetPlotLayer(name="testPos-BinaryNetPlot",bottoms=[:final, :label])
-    test_pos_net = Net("TweetDetect-testPos", backend, [data_test, common_layers..., accuracy])
-    add_coffee_break(solver, ValidationPerformance(test_pos_net), every_n_iter=3000)
+#    outputLayer = MemoryOutputLayer(name="testPos-Output",bottoms=[:final])
+    test_pos_net = Net("TweetDetect-testPos", backend, [data_test, common_layers..., accuracy]) 
+    add_coffee_break(solver, ValidationPerformance(test_pos_net), every_n_iter=500)
     
-
     data_test =  MemoryDataLayer(name="testNeg-data",data=Array[x_test[:,testingSetNeg], y_test[testingSetNeg]],batch_size=50)
     accuracy = AccuracyLayer(name="testNeg-accuracy",bottoms=[:final, :label])
     test_neg_net = Net("TweetDetect-testNeg", backend, [data_test, common_layers..., accuracy])
     add_coffee_break(solver, ValidationPerformance(test_neg_net), every_n_iter=500)
     
+    #Grabbing the output and analyze based on hashtag.
+
     solve(solver, net) 
+    net_output = solver.coffee_lounge.coffee_breaks[3].coffee.validation_net.states[end].outputs
+
     destroy(net)
     destroy(test_net)
     destroy(test_pos_net)
     destroy(test_neg_net)
     shutdown(backend)
+    return (net_output, y_test)
 end
+function TestTest(net_output,y_test)
+    test_size = length(y_test)
+    startidx = test_size+50 - (test_size %50)+ 1
+    net_output = reduce(hcat,net_output[end])[:,startidx:end]
+    net_output = (findmax(net_output,1)[2] % 3).== 2
+    net_output = vcat(net_output',zeros(8)) 
+    println(length(findnz(net_output)))
+    println(sum(y_test))
 
-MLLearn()
+    #Grabbing Truths (y)
+    z_test = load("16-07-01.jld","z")
+    totalSum = size(z_test)[1] #Total count of hashtags
+    y_test = find( y_test )
+    z3_test = map(i -> !isempty(searchsorted(y_test,i)), findnz(z_test)[3])
+    z_test = findnz(z_test)
+    truth = unique(findnz(sparse(z_test[1],z_test[2],z3_test))[1])
+    
+
+    #Grabbing Predicted Truths (hat{y})
+    #Assumign net_ouput to be Array{Boolean}
+    net_output = find(net_output)
+    hz3_test = map(i -> !isempty(searchsorted(net_output,i)), z_test[3])
+    hz = sparse(z_test[1],z_test[2],hz3_test)
+    predicted_truth = Array{Number,1}()
+    repetit_size =3 
+    #Sliding Window
+    for i in (repetit_size+1):size(hz,2)
+        append!(predicted_truth,find(sum(hz[:,(i-repetit_size):i],1).==repetit_size))
+        
+    end
+    predicted_truth  =  unique(predicted_truth)
+    
+     
+     
+    
+    
+    #Generating statistics for TruePos, FalsePos, FalseNeg, and TrueNeg.
+    sort!(truth)
+    sort!(predicted_truth)
+    truePos = intersect(truth,predicted_truth)
+    falsePos = setdiff(predicted_truth,truePos)
+    falseNeg = setdiff(truth,truePos)
+    truePos = length(truePos)
+    falsePos = length(falsePos)
+    falseNeg = length(falseNeg)
+    trueNeg = totalSum - truePos - falsePos - falseNeg 
+    print("True Positives Count:")
+    println(truePos)
+    print("True Negative Count:")
+    println(trueNeg)
+    print("False Positives Count:")
+    println(falsePos)
+    print("False Negative Count:")
+    println(falseNeg)
+end
+#(net_output, y_test) = MLLearn()

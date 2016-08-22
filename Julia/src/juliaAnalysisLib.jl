@@ -287,10 +287,19 @@ function convertToVectorFiles(dirString,dateString,windowSizeInMS = 120000,recur
             end
         #end
     end
+    #Create a new Hashtag Table:  List of hashtag "zh", and a sparse matrix of hashtag+ time to index "z".
+    zh = unique(reduce(vcat,map( i-> collect(keys(i)),vectorIndMapping)))
+    sort!(zh)
+    z = spzeros(length(zh),length(vectorIndMapping))
+    for i in collect(1:length(vectorIndMapping))
+        for j in keys(vectorIndMapping[i])
+            z[searchsortedfirst( zh,j),i] = vectorIndMapping[i][j]
+        end 
+    end
     println("Conversion success, Begin Saving")
     print("Vector Count: ")
     println(length(x_vector))
-    save(dateString*".jld","x",sparse(Array{UInt32,2}(reduce(hcat,x_vector))),"y",Array{UInt8,1}(y_vector))
+    save(dateString*".jld","x",sparse(Array{UInt32,2}(reduce(hcat,x_vector))),"y",Array{UInt8,1}(y_vector),"zh", zh,"z",z)
     println("Prediction Label Summary:")
     println(hist(y_vector,predictionCount))
     convertToLIBSVMFile(".",dateString*".libsvm.data",x_vector,y_vector)
