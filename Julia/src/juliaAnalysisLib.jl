@@ -262,6 +262,7 @@ using JSON
 import GZip
 
 function convertToVectorFiles(dirString,dateString,windowSizeInMS = 120000,recurrentVectorSizeInWindowCount = 15,predictionCount = 30)
+    f = jldopen("Step1_Parse/MLVectors/"*dateString*".jld","w")
     x_store = mapreduce(x->toVectorDstr(toHashMap(toDstream(map(y -> JSON.parse(y),readlines(GZip.open(dirString * "/" * dateString * "/" * x))),windowSizeInMS))),vcat,readdir(dirString * "/" * dateString))
     (x_vector,vectorIndMapping) = toXVectors(x_store,recurrentVectorSizeInWindowCount)
     x_store = 0
@@ -287,6 +288,15 @@ function convertToVectorFiles(dirString,dateString,windowSizeInMS = 120000,recur
             end
         #end
     end
+    write(f,"x",sparse(Array{UInt32,2}(reduce(hcat,x_vector))))
+    write(f,"y",Array{UInt8,1}(y_vector))
+    print("Vector Count: ")
+    println(length(x_vector))
+    println("Prediction Label Summary:")
+    println(hist(y_vector,predictionCount))
+    convertToLIBSVMFile("Step1_Parse/MLVectors",dateString*".libsvm.data",x_vector,y_vector)
+    x_vector =0
+    y_vector =0
     #Create a new Hashtag Table:  List of hashtag "zh", and a sparse matrix of hashtag+ time to index "z".
     zh = unique(reduce(vcat,map( i-> collect(keys(i)),vectorIndMapping)))
     sort!(zh)
@@ -297,13 +307,9 @@ function convertToVectorFiles(dirString,dateString,windowSizeInMS = 120000,recur
         end 
     end
     println("Conversion success, Begin Saving")
-    print("Vector Count: ")
-    println(length(x_vector))
-    save(dateString*".jld","x",sparse(Array{UInt32,2}(reduce(hcat,x_vector))),"y",Array{UInt8,1}(y_vector),"zh", zh,"z",z)
-    println("Prediction Label Summary:")
-    println(hist(y_vector,predictionCount))
-    convertToLIBSVMFile(".",dateString*".libsvm.data",x_vector,y_vector)
-    
+    write(f,"zh", z)
+    write(f,"z",z)
+    close(f) 
 end
 
 ##Save into LibSVM format
