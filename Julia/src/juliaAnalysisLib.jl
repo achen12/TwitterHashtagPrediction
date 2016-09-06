@@ -265,6 +265,7 @@ function convertToVectorFiles(dirString,dateString,windowSizeInMS = 120000,recur
     f = jldopen("Step1_Parse/MLVectors/"*dateString*".jld","w")
     x_store = mapreduce(x->toVectorDstr(toHashMap(toDstream(map(y -> JSON.parse(y),readlines(GZip.open(dirString * "/" * dateString * "/" * x))),windowSizeInMS))),vcat,readdir(dirString * "/" * dateString))
     (x_vector,vectorIndMapping) = toXVectors(x_store,recurrentVectorSizeInWindowCount)
+    x_vector = SparseMatrixCSC{Int32,Int64}(sparse(reduce(hcat,x_vector)))
     x_store = 0
     trendx = mapreduce(x->map(y -> JSON.parse(y),readlines(GZip.open(dirString * "/trend" * dateString * "/" * x))),vcat,readdir(dirString * "/trend" * dateString)) #File Readin
     trendx = mapreduce(i -> mapreduce(j-> Pair(i["timestamp_ms"],j["Name"]),vcat,i["Trend"]),vcat,trendx)
@@ -274,7 +275,7 @@ function convertToVectorFiles(dirString,dateString,windowSizeInMS = 120000,recur
     #dt = Dates.datetime2unix(startTime)*1000
     dt = first(trendingHashes)[1]
     trendingHashes = map(x -> Pair(round(Int64, (x[1] - dt)/windowSizeInMS),x[2]), trendingHashes)
-    y_vector = zeros(length(x_vector))
+    y_vector = Array{UInt8,1}(zeros(size(x_vector,2)))
     println("Being labeling process")
     for x in trendingHashes
         #recurrentIndex = x[1] - recurrentCount
@@ -288,10 +289,10 @@ function convertToVectorFiles(dirString,dateString,windowSizeInMS = 120000,recur
             end
         #end
     end
-    write(f,"x",sparse(Array{UInt32,2}(reduce(hcat,x_vector))))
-    write(f,"y",Array{UInt8,1}(y_vector))
+    write(f,"x",x_vector)
+    write(f,"y",y_vector)
     print("Vector Count: ")
-    println(length(x_vector))
+    println(size(x_vector,2))
     println("Prediction Label Summary:")
     println(hist(y_vector,predictionCount))
     convertToLIBSVMFile("Step1_Parse/MLVectors",dateString*".libsvm.data",x_vector,y_vector)
