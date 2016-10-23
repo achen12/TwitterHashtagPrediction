@@ -172,7 +172,6 @@ function TestTest(net_output_in,y_test)
     truth = unique(findnz(z3_test)[1])
     
     #Create Truth Timing
-    #TODO
     temp = findn(z3_test)
     truthTiming = Dict(zip(temp[1],temp[2]))
 
@@ -229,7 +228,7 @@ function TestTest(net_output_in,y_test)
     #Create Histogram
     PyPlot.clf()
     yy = hist(timingStatistics,40)
-    bar(yy[1][1:end-1]./2,yy[2],10)
+    bar(yy[1][1:end-1].*2,yy[2],10)
     title("Trend Prediction Timing of True Postive hashtags of 07-02-2016")
     ylabel("Count of Hashtags")
     xlabel("Predicted Time - Truth Time (Minutes)")
